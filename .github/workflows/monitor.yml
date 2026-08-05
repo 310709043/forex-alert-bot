@@ -1,0 +1,44 @@
+name: forex-monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * 1-5'   # 每 15 分鐘（週一~週五 UTC，外匯開市時段）
+  workflow_dispatch:            # 也可手動觸發
+
+permissions:
+  contents: write               # 允許把 state.json 寫回 repo（去重用）
+
+concurrency:
+  group: forex-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 檢查訊號
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+        run: python forex_alert_bot.py --once
+
+      - name: 保存去重狀態
+        run: |
+          if [[ -n "$(git status --porcelain state.json)" ]]; then
+            git config user.name  "forex-bot"
+            git config user.email "forex-bot@users.noreply.github.com"
+            git add state.json
+            git commit -m "chore: update state [skip ci]"
+            git push
+          else
+            echo "state 無變化，略過提交"
+          fi
